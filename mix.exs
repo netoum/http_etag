@@ -56,7 +56,8 @@ defmodule HttpEtag.MixProject do
       links: %{
         "GitHub" => @source_url,
         "Changelog" => "#{@source_url}/blob/main/CHANGELOG.md",
-        "RFC 9110" => @rfc_url
+        "RFC 9110" => @rfc_url,
+        "JSON Merge Patch" => "https://hex.pm/packages/json_merge_patch"
       }
     ]
   end

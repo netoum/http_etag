@@ -2,6 +2,7 @@ defmodule HttpEtagTest do
   use ExUnit.Case, async: true
   use ExUnitProperties
   doctest HttpEtag
+  doctest HttpEtag.Error
 
   alias HttpEtag.Error
 
@@ -14,6 +15,9 @@ defmodule HttpEtagTest do
 
     test "accepts an empty opaque" do
       assert HttpEtag.new("") == {:ok, %HttpEtag{opaque: "", weak: false}}
+    end
+
+    test "default struct is an empty strong tag" do
       assert struct(HttpEtag) == %HttpEtag{opaque: "", weak: false}
     end
 
@@ -29,6 +33,16 @@ defmodule HttpEtagTest do
     test "rejects space and DEL" do
       assert {:error, %Error{reason: :invalid_etag}} = HttpEtag.new("a b")
       assert {:error, %Error{reason: :invalid_etag}} = HttpEtag.new(<<0x7F>>)
+    end
+
+    test "accepts an integer as opaque digits" do
+      assert HttpEtag.new(1) == {:ok, %HttpEtag{opaque: "1", weak: false}}
+      assert HttpEtag.new(-1) == {:ok, %HttpEtag{opaque: "-1", weak: false}}
+      assert HttpEtag.new(1, true) == {:ok, %HttpEtag{opaque: "1", weak: true}}
+
+      tag = HttpEtag.new!(42)
+      assert tag == %HttpEtag{opaque: "42", weak: false}
+      assert HttpEtag.parse!(HttpEtag.to_header(tag)) == tag
     end
 
     test "rejects a non-binary opaque or non-boolean weak flag" do
@@ -79,6 +93,10 @@ defmodule HttpEtagTest do
     test "rejects a non-binary value" do
       assert {:error, %Error{reason: :invalid_etag}} = HttpEtag.parse(nil)
     end
+
+    test "rejects W/ without an entity-tag" do
+      assert {:error, %Error{reason: :invalid_etag}} = HttpEtag.parse("W/")
+    end
   end
 
   describe "parse_list/1" do
@@ -114,6 +132,7 @@ defmodule HttpEtagTest do
 
     test "rejects leftover tokens and non-binaries" do
       assert {:error, %Error{reason: :invalid_header}} = HttpEtag.parse_list("foo")
+      assert {:error, %Error{reason: :invalid_header}} = HttpEtag.parse_list("W/")
       assert {:error, %Error{reason: :invalid_header}} = HttpEtag.parse_list(:star)
     end
   end
@@ -186,11 +205,9 @@ defmodule HttpEtagTest do
       assert {:error, %Error{reason: :precondition_failed}} = HttpEtag.if_match(nil, ~S("abc"))
     end
 
-    test "invalid header is :invalid_header" do
+    test "invalid field text is :invalid_header" do
       assert {:error, %Error{reason: :invalid_header}} =
                HttpEtag.if_match(tag!(~S("abc")), "nope")
-
-      assert {:error, %Error{reason: :invalid_header}} = HttpEtag.if_match(tag!(~S("abc")), :bad)
     end
   end
 
@@ -223,30 +240,47 @@ defmodule HttpEtagTest do
       assert HttpEtag.if_none_match(tag!(~S("abc")), "") == :ok
     end
 
-    test "invalid header is :invalid_header" do
+    test "invalid field text is :invalid_header" do
       assert {:error, %Error{reason: :invalid_header}} = HttpEtag.if_none_match(nil, "nope")
     end
   end
 
   describe "bang variants" do
-    test "return the value or :ok and raise HttpEtag.Error" do
+    test "new!/1 and new!/2 return a tag" do
       assert HttpEtag.new!("abc") == %HttpEtag{opaque: "abc", weak: false}
       assert HttpEtag.new!("abc", true) == %HttpEtag{opaque: "abc", weak: true}
+    end
+
+    test "parse!/1 and parse_list!/1 return the parsed value" do
       assert HttpEtag.parse!(~S("abc")) == %HttpEtag{opaque: "abc", weak: false}
       assert HttpEtag.parse_list!("*") == :any
       assert HttpEtag.parse_list!(~S("a")) == [%HttpEtag{opaque: "a", weak: false}]
+    end
+
+    test "if_match!/2 and if_none_match!/2 return :ok" do
       assert HttpEtag.if_match!(tag!(~S("abc")), ~S("abc")) == :ok
       assert HttpEtag.if_none_match!(nil, "*") == :ok
+    end
 
+    test "new!/1 raises on an invalid opaque" do
       assert_raise Error, "invalid entity-tag", fn -> HttpEtag.new!("a b") end
-      assert_raise Error, "invalid entity-tag", fn -> HttpEtag.parse!("*") end
+    end
 
+    test "parse!/1 raises on an invalid entity-tag" do
+      assert_raise Error, "invalid entity-tag", fn -> HttpEtag.parse!("*") end
+    end
+
+    test "parse_list!/1 raises on an invalid field" do
       assert_raise Error, "invalid If-Match or If-None-Match header", fn ->
         HttpEtag.parse_list!("nope")
       end
+    end
 
+    test "if_match!/2 raises when the precondition fails" do
       assert_raise Error, "precondition failed", fn -> HttpEtag.if_match!(nil, "*") end
+    end
 
+    test "if_none_match!/2 raises when the precondition fails" do
       assert_raise Error, "precondition failed", fn ->
         HttpEtag.if_none_match!(tag!(~S("abc")), "*")
       end
@@ -294,6 +328,10 @@ defmodule HttpEtagTest do
                "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f"
     end
 
+    test "accepts iodata" do
+      assert HttpEtag.from_content(["ab", "c"]) == HttpEtag.from_content("abc")
+    end
+
     test "rejects a non-boolean :weak or non-atom :algorithm" do
       assert_raise ArgumentError, ~r/:weak must be a boolean/, fn ->
         HttpEtag.from_content("abc", weak: :yes)
@@ -303,16 +341,42 @@ defmodule HttpEtagTest do
         HttpEtag.from_content("abc", algorithm: "sha256")
       end
     end
+
+    test "rejects an unknown option" do
+      assert_raise ArgumentError, fn ->
+        HttpEtag.from_content("abc", extra: true)
+      end
+    end
   end
 
-  describe "current type errors" do
-    test "if_match/2 and if_none_match/2 raise ArgumentError" do
+  describe "current and header type errors" do
+    test "if_match/2 and if_none_match/2 raise ArgumentError on a bad current" do
       assert_raise ArgumentError, ~r/current must be a %HttpEtag\{\} or nil/, fn ->
         HttpEtag.if_match(~S("abc"), ~S("abc"))
       end
 
       assert_raise ArgumentError, ~r/current must be a %HttpEtag\{\} or nil/, fn ->
         HttpEtag.if_none_match(~S("abc"), ~S("abc"))
+      end
+    end
+
+    test "if_match/2 and if_none_match/2 raise ArgumentError on a non-binary header" do
+      tag = tag!(~S("abc"))
+
+      assert_raise ArgumentError, ~r/header must be a binary or nil/, fn ->
+        HttpEtag.if_match(tag, :bad)
+      end
+
+      assert_raise ArgumentError, ~r/header must be a binary or nil/, fn ->
+        HttpEtag.if_none_match(tag, :bad)
+      end
+
+      assert_raise ArgumentError, ~r/header must be a binary or nil/, fn ->
+        HttpEtag.if_match(nil, :bad)
+      end
+
+      assert_raise ArgumentError, ~r/header must be a binary or nil/, fn ->
+        HttpEtag.if_none_match(nil, :bad)
       end
     end
   end
@@ -361,6 +425,18 @@ defmodule HttpEtagTest do
           refute HttpEtag.strong_match?(left, right)
         else
           assert HttpEtag.strong_match?(left, right) == (left.opaque == right.opaque)
+        end
+      end
+    end
+
+    property "invalid octets never succeed new/1 or quoted parse/1" do
+      check all(byte <- StreamData.integer(0..0xFF)) do
+        if byte === 0x21 or (byte >= 0x23 and byte <= 0x7E) or byte >= 0x80 do
+          assert {:ok, %HttpEtag{opaque: <<^byte>>, weak: false}} = HttpEtag.new(<<byte>>)
+        else
+          assert {:error, %Error{reason: :invalid_etag}} = HttpEtag.new(<<byte>>)
+          quoted = <<?", byte, ?">>
+          assert {:error, %Error{reason: :invalid_etag}} = HttpEtag.parse(quoted)
         end
       end
     end
