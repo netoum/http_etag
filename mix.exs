@@ -1,7 +1,7 @@
 defmodule HttpEtag.MixProject do
   use Mix.Project
 
-  @version "0.2.0"
+  @version "0.1.0"
   @source_url "https://github.com/netoum/http_etag"
   @rfc_url "https://www.rfc-editor.org/rfc/rfc9110.html"
 
@@ -56,7 +56,8 @@ defmodule HttpEtag.MixProject do
       links: %{
         "GitHub" => @source_url,
         "Changelog" => "#{@source_url}/blob/main/CHANGELOG.md",
-        "RFC 9110" => @rfc_url
+        "RFC 9110" => @rfc_url,
+        "JSON Merge Patch" => "https://hex.pm/packages/json_merge_patch"
       }
     ]
   end

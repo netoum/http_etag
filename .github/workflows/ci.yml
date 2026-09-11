@@ -89,7 +89,12 @@ jobs:
         run: mix deps.get
 
       - name: Run tests
-        run: mix test --cover
+        run: |
+          mix test --cover || {
+            echo "Uncovered lines:"
+            grep -n 'class="miss"' cover/*.html || true
+            exit 1
+          }
 
   dialyzer:
     name: Dialyzer
