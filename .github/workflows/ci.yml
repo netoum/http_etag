@@ -1,0 +1,127 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-24.04
+    env:
+      MIX_ENV: test
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.19.5"
+          otp-version: "28.3"
+
+      - name: Restore dependencies cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            deps
+            _build
+          key: deps-${{ runner.os }}-28.3-1.19.5-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            deps-${{ runner.os }}-28.3-1.19.5
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: mix format
+        run: mix format --check-formatted
+
+      - name: mix compile
+        run: mix compile --warnings-as-errors
+
+      - name: mix credo
+        run: mix credo --strict
+
+      - name: mix docs
+        env:
+          MIX_ENV: dev
+        run: mix deps.get && mix docs --warnings-as-errors
+
+      - name: mix hex.build
+        run: mix hex.build
+
+  unit-tests:
+    name: Unit tests (OTP ${{ matrix.otp }} | Elixir ${{ matrix.elixir }})
+    runs-on: ubuntu-24.04
+    env:
+      MIX_ENV: test
+    strategy:
+      matrix:
+        include:
+          - elixir: "1.17"
+            otp: "27"
+          - elixir: "1.19.5"
+            otp: "28.3"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ matrix.elixir }}
+          otp-version: ${{ matrix.otp }}
+
+      - name: Restore dependencies cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            deps
+            _build
+          key: deps-${{ runner.os }}-${{ matrix.otp }}-${{ matrix.elixir }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            deps-${{ runner.os }}-${{ matrix.otp }}-${{ matrix.elixir }}
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Run tests
+        run: mix test --cover
+
+  dialyzer:
+    name: Dialyzer
+    runs-on: ubuntu-24.04
+    env:
+      MIX_ENV: dev
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.19.5"
+          otp-version: "28.3"
+
+      - name: Restore dependencies cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            deps
+            _build
+          key: dialyzer-deps-${{ runner.os }}-28.3-1.19.5-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            dialyzer-deps-${{ runner.os }}-28.3-1.19.5
+
+      - name: Restore PLT cache
+        uses: actions/cache@v6
+        with:
+          path: priv/plts
+          key: plt-${{ runner.os }}-28.3-1.19.5-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            plt-${{ runner.os }}-28.3-1.19.5
+
+      - name: Dialyzer
+        run: mix deps.get && mix dialyzer
