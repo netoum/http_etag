@@ -21,7 +21,7 @@ HttpEtag.if_none_match(current, if_none_match_header)
 ```elixir
 def deps do
   [
-    {:http_etag, "~> 0.2.0"}
+    {:http_etag, "~> 0.1.0"}
   ]
 end
 ```

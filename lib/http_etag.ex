@@ -30,8 +30,6 @@ defmodule HttpEtag do
   # RFC 9110 §5.6.1.2: parse a reasonable number of empty list elements.
   @max_list_elements 256
 
-  defguardp is_etagc(c) when c === 0x21 or (c >= 0x23 and c <= 0x7E) or c >= 0x80
-
   @doc """
   Builds an entity-tag from opaque octets.
 
@@ -413,14 +411,20 @@ defmodule HttpEtag do
     {:ok, %__MODULE__{opaque: IO.iodata_to_binary(acc), weak: weak}, rest}
   end
 
-  defp take_opaque(<<c, rest::binary>>, acc, weak) when is_etagc(c) do
+  defp take_opaque(<<c, rest::binary>>, acc, weak)
+       when c === 0x21 or (c >= 0x23 and c <= 0x7E) or c >= 0x80 do
     take_opaque(rest, [acc, c], weak)
   end
 
   defp take_opaque(_rest, _acc, _weak), do: :error
 
   defp valid_opaque?(<<>>), do: true
-  defp valid_opaque?(<<c, rest::binary>>) when is_etagc(c), do: valid_opaque?(rest)
+
+  defp valid_opaque?(<<c, rest::binary>>)
+       when c === 0x21 or (c >= 0x23 and c <= 0x7E) or c >= 0x80 do
+    valid_opaque?(rest)
+  end
+
   defp valid_opaque?(_opaque), do: false
 
   defp trim_ows(value), do: value |> trim_ows_left() |> trim_ows_right()
