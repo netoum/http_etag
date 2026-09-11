@@ -46,17 +46,13 @@ defmodule HttpEtag do
   """
   @spec new(term()) :: {:ok, t()} | {:error, Error.t()}
   @spec new(term(), term()) :: {:ok, t()} | {:error, Error.t()}
-  def new(opaque, weak \\ false)
-
-  def new(opaque, weak) when is_binary(opaque) and is_boolean(weak) do
-    if valid_opaque?(opaque) do
+  def new(opaque, weak \\ false) do
+    if is_binary(opaque) and is_boolean(weak) and valid_opaque?(opaque) do
       {:ok, %__MODULE__{opaque: opaque, weak: weak}}
     else
       error(:invalid_etag)
     end
   end
-
-  def new(_opaque, _weak), do: error(:invalid_etag)
 
   @doc """
   Same as `new/2` but raises `HttpEtag.Error` on failure.
@@ -94,7 +90,7 @@ defmodule HttpEtag do
   """
   @spec from_content(iodata()) :: t()
   @spec from_content(iodata(), keyword()) :: t()
-  def from_content(content, opts \\ []) when is_list(opts) do
+  def from_content(content, opts \\ []) do
     algorithm = Keyword.get(opts, :algorithm, :sha256)
     weak = Keyword.get(opts, :weak, false)
 
