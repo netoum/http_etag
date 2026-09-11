@@ -14,6 +14,7 @@ defmodule HttpEtagTest do
 
     test "accepts an empty opaque" do
       assert HttpEtag.new("") == {:ok, %HttpEtag{opaque: "", weak: false}}
+      assert struct(HttpEtag) == %HttpEtag{opaque: "", weak: false}
     end
 
     test "accepts obs-text octets" do
@@ -229,6 +230,7 @@ defmodule HttpEtagTest do
 
   describe "bang variants" do
     test "return the value or :ok and raise HttpEtag.Error" do
+      assert HttpEtag.new!("abc") == %HttpEtag{opaque: "abc", weak: false}
       assert HttpEtag.new!("abc", true) == %HttpEtag{opaque: "abc", weak: true}
       assert HttpEtag.parse!(~S("abc")) == %HttpEtag{opaque: "abc", weak: false}
       assert HttpEtag.parse_list!("*") == :any
